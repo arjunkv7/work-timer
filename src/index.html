@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>WorkTimer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;500;700&display=swap');
+
+  :root {
+    --bg: #0f0f0f;
+    --bg2: #161616;
+    --bg3: #1e1e1e;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #f0ede8;
+    --muted: #6b6966;
+    --accent: #d4f542;
+    --accent-dim: rgba(212,245,66,0.12);
+    --danger: #ff5a5a;
+    --danger-dim: rgba(255,90,90,0.12);
+    --warn: #ffbe30;
+    --warn-dim: rgba(255,190,48,0.12);
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  #titlebar {
+    -webkit-app-region: drag;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .title-logo { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; }
+
+  .win-btns { display: flex; gap: 8px; -webkit-app-region: no-drag; }
+  .win-btn { width: 12px; height: 12px; border-radius: 50%; border: none; cursor: pointer; transition: opacity 0.15s; }
+  .win-btn:hover { opacity: 0.75; }
+  .win-btn.close { background: #ff5a5a; }
+  .win-btn.min { background: #ffbe30; }
+
+  #app {
+    height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+    padding: 16px 16px 12px;
+    gap: 12px;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  #app::-webkit-scrollbar { display: none; }
+
+  .status-row { display: flex; align-items: center; justify-content: space-between; }
+
+  .status-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border); color: var(--muted);
+    transition: all 0.3s;
+  }
+  .status-badge.running { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .status-badge.break { border-color: var(--warn); color: var(--warn); background: var(--warn-dim); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .status-badge.running .status-dot { animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .date-str { font-size: 12px; color: var(--muted); }
+
+  /* Timer card */
+  .timer-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 20px 16px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    position: relative; overflow: hidden;
+  }
+  .timer-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0; transition: opacity 0.4s;
+  }
+  .timer-card.running::before { opacity: 1; }
+
+  .timer-sub { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .timer-display {
+    font-family: 'JetBrains Mono', monospace; font-size: 48px; font-weight: 600;
+    letter-spacing: -2px; color: var(--text); transition: color 0.3s, opacity 0.3s; line-height: 1;
+  }
+  .timer-display.paused { opacity: 0.3; }
+  .timer-display.running { color: var(--accent); }
+
+  .controls { display: flex; gap: 10px; margin-top: 10px; }
+
+  .btn {
+    display: flex; align-items: center; gap: 7px; padding: 9px 20px;
+    border-radius: 8px; border: 1px solid var(--border2); background: var(--bg3);
+    color: var(--text); font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; -webkit-app-region: no-drag;
+  }
+  .btn:hover { border-color: rgba(255,255,255,0.2); background: #232323; }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary { background: var(--accent); color: #0f0f0f; border-color: transparent; font-weight: 700; }
+  .btn.primary:hover { background: #c8e93a; }
+  .btn.ghost-danger { border-color: transparent; background: transparent; color: var(--danger); font-size: 12px; padding: 8px 14px; }
+  .btn.ghost-danger:hover { background: var(--danger-dim); }
+
+  /* Time info row */
+  .time-info {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+
+  .time-info-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; display: flex; flex-direction: column; gap: 3px;
+  }
+  .ti-label { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .ti-value { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; color: var(--text); }
+  .ti-value.empty { color: var(--muted); font-size: 13px; }
+
+  /* Break info */
+  .break-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .break-left { display: flex; flex-direction: column; gap: 2px; }
+  .break-label { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .break-value { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; color: var(--warn); }
+  .break-count { font-size: 12px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+
+  /* Stats */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .stat-label { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 600; color: var(--text); }
+
+  /* Sessions */
+  .section-head { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: -2px; }
+  .session-list { display: flex; flex-direction: column; gap: 5px; }
+
+  .session-row {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 12px;
+  }
+  .session-top { display: flex; justify-content: space-between; align-items: center; }
+  .session-date { color: var(--muted); font-size: 12px; }
+  .session-time { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 13px; }
+  .session-meta { display: flex; gap: 12px; }
+  .session-meta-item { font-size: 11px; color: var(--muted); }
+  .session-meta-item span { color: var(--text); font-family: 'JetBrains Mono', monospace; }
+  .skip-tag { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--bg3); padding: 3px 8px; border-radius: 6px; }
+
+  /* Modals */
+  #modal {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    display: none; align-items: center; justify-content: center; z-index: 999;
+  }
+  #modal.visible { display: flex; }
+
+  .modal-box {
+    background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius);
+    padding: 28px 24px; width: 300px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+  }
+  .modal-emoji { font-size: 36px; }
+  .modal-title { font-size: 18px; font-weight: 700; }
+  .modal-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .modal-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
+  .modal-actions .btn { justify-content: center; width: 100%; }
+</style>
+</head>
+<body>
+
+<div id="titlebar">
+  <span class="title-logo">WorkTimer</span>
+  <div class="win-btns">
+    <button class="win-btn min" onclick="window.worktimer.minimize()" title="Minimize"></button>
+    <button class="win-btn close" onclick="window.worktimer.close()" title="Hide to tray"></button>
+  </div>
+</div>
+
+<div id="app">
+  <div class="status-row">
+    <div class="status-badge idle" id="status-badge">
+      <div class="status-dot"></div>
+      <span id="status-text">Idle</span>
+    </div>
+    <div class="date-str" id="date-str">—</div>
+  </div>
+
+  <!-- Timer -->
+  <div class="timer-card" id="timer-card">
+    <div class="timer-sub">Today's session</div>
+    <div class="timer-display" id="timer-display">00:00:00</div>
+    <div class="controls">
+      <button class="btn primary" id="main-btn" onclick="handleMain()">▶ Start</button>
+      <button class="btn ghost-danger" id="reset-btn" onclick="handleReset()" style="display:none">↺ Reset</button>
+    </div>
+  </div>
+
+  <!-- Start / End time -->
+  <div class="time-info">
+    <div class="time-info-card">
+      <div class="ti-label">Started at</div>
+      <div class="ti-value" id="ti-start">—</div>
+    </div>
+    <div class="time-info-card">
+      <div class="ti-label">Last active</div>
+      <div class="ti-value" id="ti-end">—</div>
+    </div>
+  </div>
+
+  <!-- Breaks -->
+  <div class="break-card">
+    <div class="break-left">
+      <div class="break-label">Total break time</div>
+      <div class="break-value" id="break-total">0h 0m</div>
+    </div>
+    <div class="break-count" id="break-count">0 breaks</div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat"><div class="stat-label">Today</div><div class="stat-value" id="s-today">0h 0m</div></div>
+    <div class="stat"><div class="stat-label">This week</div><div class="stat-value" id="s-week">0h 0m</div></div>
+    <div class="stat"><div class="stat-label">All time</div><div class="stat-value" id="s-all">0h 0m</div></div>
+  </div>
+
+  <!-- Recent sessions -->
+  <div class="section-head">Recent sessions</div>
+  <div class="session-list" id="session-list">
+    <div class="session-row"><span class="session-date">No sessions yet</span></div>
+  </div>
+</div>
+
+<!-- Day prompt modal -->
+<div id="modal">
+  <div class="modal-box">
+    <div class="modal-emoji">☀️</div>
+    <div class="modal-title">Good day!</div>
+    <div class="modal-desc">Ready to start tracking your work time for today?</div>
+    <div class="modal-actions">
+      <button class="btn primary" onclick="acceptDay()">▶ Start tracking</button>
+      <button class="btn" onclick="skipDay()">Skip today</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function fmtTimer(secs) {
+    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  function fmtHM(secs) {
+    return `${Math.floor(secs/3600)}h ${Math.floor((secs%3600)/60)}m`;
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const h = String(d.getHours()).padStart(2,'0');
+    const m = String(d.getMinutes()).padStart(2,'0');
+    return `${h}:${m}`;
+  }
+
+  function fmtDate(key) {
+    const [y,m,d] = key.split('-').map(Number);
+    const dt = new Date(y, m-1, d);
+    const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const today = new Date();
+    const tk = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    if (key === tk) return 'Today';
+    const yest = new Date(today); yest.setDate(today.getDate()-1);
+    const yk = `${yest.getFullYear()}-${String(yest.getMonth()+1).padStart(2,'0')}-${String(yest.getDate()).padStart(2,'0')}`;
+    if (key === yk) return 'Yesterday';
+    return `${days[dt.getDay()]}, ${months[m-1]} ${d}`;
+  }
+
+  let liveInterval = null;
+  let currentState = null;
+  let liveStart = null;
+
+  function renderState(state) {
+    currentState = state;
+
+    // Date
+    const now = new Date();
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    document.getElementById('date-str').textContent = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}`;
+
+    // Status
+    const badge = document.getElementById('status-badge');
+    const stxt = document.getElementById('status-text');
+    const onBreak = !state.running && state.todayTotal > 0;
+    badge.className = 'status-badge ' + (state.running ? 'running' : onBreak ? 'break' : 'idle');
+    stxt.textContent = state.running ? 'Tracking' : onBreak ? 'On break' : 'Idle';
+
+    // Timer card
+    document.getElementById('timer-card').className = 'timer-card' + (state.running ? ' running' : '');
+    const disp = document.getElementById('timer-display');
+    disp.textContent = fmtTimer(state.todayTotal);
+    disp.className = 'timer-display ' + (state.running ? 'running' : state.todayTotal > 0 ? 'paused' : '');
+
+    // Buttons
+    document.getElementById('main-btn').textContent = state.running ? '⏸ Pause' : (state.todayTotal > 0 ? '▶ Resume' : '▶ Start');
+    document.getElementById('reset-btn').style.display = (!state.running && state.todayTotal > 0) ? '' : 'none';
+
+    // Start / end times
+    document.getElementById('ti-start').textContent = fmtTime(state.startTime) || '—';
+    document.getElementById('ti-start').className = 'ti-value' + (state.startTime ? '' : ' empty');
+    document.getElementById('ti-end').textContent = fmtTime(state.endTime) || '—';
+    document.getElementById('ti-end').className = 'ti-value' + (state.endTime ? '' : ' empty');
+
+    // Breaks
+    document.getElementById('break-total').textContent = fmtHM(state.totalBreakSecs || 0);
+    document.getElementById('break-count').textContent = `${state.breakCount || 0} break${state.breakCount !== 1 ? 's' : ''}`;
+
+    // Stats
+    document.getElementById('s-today').textContent = fmtHM(state.todayTotal);
+    document.getElementById('s-week').textContent = fmtHM(state.weekSecs);
+    document.getElementById('s-all').textContent = fmtHM(state.allSecs);
+
+    // Sessions list
+    const list = document.getElementById('session-list');
+    if (!state.recent || !state.recent.length) {
+      list.innerHTML = '<div class="session-row"><span class="session-date">No sessions yet</span></div>';
+    } else {
+      list.innerHTML = state.recent.map(r => {
+        if (r.skipped) return `
+          <div class="session-row">
+            <div class="session-top">
+              <span class="session-date">${fmtDate(r.key)}</span>
+              <span class="skip-tag">Skipped</span>
+            </div>
+          </div>`;
+        const hasMeta = r.startTime || r.breakCount > 0;
+        return `
+          <div class="session-row">
+            <div class="session-top">
+              <span class="session-date">${fmtDate(r.key)}</span>
+              <span class="session-time">${fmtHM(r.seconds)}</span>
+            </div>
+            ${hasMeta ? `<div class="session-meta">
+              ${r.startTime ? `<div class="session-meta-item">Start <span>${fmtTime(r.startTime)}</span></div>` : ''}
+              ${r.endTime ? `<div class="session-meta-item">End <span>${fmtTime(r.endTime)}</span></div>` : ''}
+              ${r.breakCount > 0 ? `<div class="session-meta-item">Breaks <span>${r.breakCount} (${fmtHM(r.totalBreakSecs)})</span></div>` : ''}
+            </div>` : ''}
+          </div>`;
+      }).join('');
+    }
+
+    // Live tick
+    if (state.running) {
+      if (!liveInterval) {
+        liveStart = Date.now();
+        const base = state.todayTotal;
+        liveInterval = setInterval(() => {
+          const extra = Math.floor((Date.now() - liveStart) / 1000);
+          disp.textContent = fmtTimer(base + extra);
+          document.getElementById('s-today').textContent = fmtHM(base + extra);
+          // Update end time live
+          document.getElementById('ti-end').textContent = fmtTime(new Date().toISOString());
+        }, 1000);
+      }
+    } else {
+      if (liveInterval) { clearInterval(liveInterval); liveInterval = null; }
+    }
+  }
+
+  function handleMain() {
+    if (currentState && currentState.running) window.worktimer.pause();
+    else window.worktimer.start();
+  }
+
+  function handleReset() {
+    if (confirm("Reset today's timer?")) window.worktimer.reset();
+  }
+
+  function acceptDay() {
+    document.getElementById('modal').classList.remove('visible');
+    window.worktimer.acceptDay();
+  }
+
+  function skipDay() {
+    document.getElementById('modal').classList.remove('visible');
+    window.worktimer.skipDay();
+  }
+
+  window.worktimer.onStateUpdate((state) => renderState(state));
+  window.worktimer.onShowDayPrompt(() => document.getElementById('modal').classList.add('visible'));
+
+  window.worktimer.getState().then(renderState);
+</script>
+</body>
+</html>

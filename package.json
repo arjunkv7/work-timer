@@ -1,0 +1,25 @@
+{
+  "name": "worktimer",
+  "version": "1.0.0",
+  "description": "Work time tracker with Ubuntu screen lock detection",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron . --no-sandbox",
+    "build": "electron-builder --linux AppImage --no-sandbox"
+  },
+  "dependencies": {
+    "dbus-next": "^0.10.2"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.worktimer.app",
+    "productName": "WorkTimer",
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility"
+    }
+  }
+}
