@@ -289,9 +289,7 @@
     return `${days[dt.getDay()]}, ${months[m-1]} ${d}`;
   }
 
-  let liveInterval = null;
   let currentState = null;
-  let liveStart = null;
 
   function renderState(state) {
     currentState = state;
@@ -363,22 +361,6 @@
       }).join('');
     }
 
-    // Live tick
-    if (state.running) {
-      if (!liveInterval) {
-        liveStart = Date.now();
-        const base = state.todayTotal;
-        liveInterval = setInterval(() => {
-          const extra = Math.floor((Date.now() - liveStart) / 1000);
-          disp.textContent = fmtTimer(base + extra);
-          document.getElementById('s-today').textContent = fmtHM(base + extra);
-          // Update end time live
-          document.getElementById('ti-end').textContent = fmtTime(new Date().toISOString());
-        }, 1000);
-      }
-    } else {
-      if (liveInterval) { clearInterval(liveInterval); liveInterval = null; }
-    }
   }
 
   function handleMain() {
