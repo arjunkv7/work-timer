@@ -145,6 +145,24 @@ function pauseTimer(reason) {
   }
 }
 
+function stopForDay() {
+  if (running) pauseTimer();
+
+  const s = getTodaySession();
+  s.stoppedForDay = true;
+  if (!s.endTime) s.endTime = fmtTimeISO(Date.now());
+  saveData(data);
+
+  broadcastState();
+  updateTray();
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send('show-day-summary');
+  }
+}
+
 function resetToday() {
   if (running) {
     running = false;
@@ -180,8 +198,8 @@ function handleUnlock() {
   const key = todayKey();
   const s = data.sessions[key];
 
-  // Day was skipped — do nothing
-  if (s && s.skipped) return;
+  // Day was skipped or stopped for today — do nothing
+  if (s && (s.skipped || s.stoppedForDay)) return;
 
   // Timer has been running today — just resume it
   if (s && (s.seconds > 0 || s.startTime)) {
@@ -318,6 +336,7 @@ ipcMain.handle('get-state', () => buildState());
 ipcMain.on('timer-start', () => startTimer());
 ipcMain.on('timer-pause', () => pauseTimer());
 ipcMain.on('timer-reset', () => resetToday());
+ipcMain.on('timer-stop-day', () => stopForDay());
 ipcMain.on('window-minimize', () => { if (mainWindow) mainWindow.minimize(); });
 ipcMain.on('window-hide', () => { if (mainWindow) mainWindow.hide(); });
 
@@ -374,9 +393,16 @@ function buildState() {
     ? Math.floor((Date.now() - new Date(breaks[breaks.length - 1].start).getTime()) / 1000)
     : 0;
 
+  const cutoff = new Date(now);
+  cutoff.setDate(now.getDate() - 4);
+  cutoff.setHours(0, 0, 0, 0);
+
   const recent = Object.entries(data.sessions)
     .sort(([a], [b]) => b.localeCompare(a))
-    .slice(0, 7)
+    .filter(([k]) => {
+      const [y, m, d] = k.split('-').map(Number);
+      return new Date(y, m - 1, d) >= cutoff;
+    })
     .map(([k, sess]) => ({
       key: k,
       seconds: k === key ? todayTotal : (sess.seconds || 0),
@@ -399,6 +425,7 @@ function buildState() {
     endTime: running ? fmtTimeISO(Date.now()) : (s.endTime || null),
     breakCount: completedBreaks.length + (onBreakNow ? 1 : 0),
     totalBreakSecs: totalBreakSecs + liveBreakSecs,
+    stoppedForDay: s.stoppedForDay || false,
   };
 }
 
@@ -440,11 +467,13 @@ function updateTray() {
   if (!tray) return;
   tray.setImage(buildTrayIcon(running));
   updateTrayTooltip();
+  const todaySession = getTodaySession();
   const contextMenu = Menu.buildFromTemplate([
-    { label: running ? '⏸  Pause' : '▶  Start', click: () => running ? pauseTimer() : startTimer() },
+    { label: running ? '⏸  Pause' : '▶  Start', click: () => running ? pauseTimer() : startTimer(), enabled: !todaySession.stoppedForDay },
+    { label: '⏹  Stop for today', click: () => stopForDay(), enabled: !todaySession.stoppedForDay && (running || getTodaySecs() > 0) },
     { label: '🪟  Open', click: showWindow },
     { type: 'separator' },
-    { label: '⏹  Reset today', click: resetToday },
+    { label: '↺  Reset today', click: resetToday },
     { type: 'separator' },
     { label: 'Quit', click: () => { app.isQuiting = true; app.quit(); } }
   ]);
@@ -522,8 +551,8 @@ app.whenReady().then(async () => {
   createWindow();
   await setupScreenLockDetection();
 
-  if (s && s.skipped) {
-    // Day was skipped — do nothing
+  if (s && (s.skipped || s.stoppedForDay)) {
+    // Day was skipped or stopped for today — do nothing
   } else if (s && (s.seconds > 0 || s.startTime)) {
     // Session exists — resume timer regardless of lastPromptDate
     startTimer();

@@ -85,7 +85,7 @@
   .timer-card {
     background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 20px 20px 16px; display: flex; flex-direction: column; align-items: center; gap: 4px;
-    position: relative; overflow: hidden;
+    position: relative;
   }
   .timer-card::before {
     content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
@@ -102,7 +102,7 @@
   .timer-display.paused { opacity: 0.3; }
   .timer-display.running { color: var(--accent); }
 
-  .controls { display: flex; gap: 10px; margin-top: 10px; }
+  .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; }
 
   .btn {
     display: flex; align-items: center; gap: 7px; padding: 9px 20px;
@@ -114,8 +114,17 @@
   .btn:active { transform: scale(0.97); }
   .btn.primary { background: var(--accent); color: #0f0f0f; border-color: transparent; font-weight: 700; }
   .btn.primary:hover { background: #c8e93a; }
-  .btn.ghost-danger { border-color: transparent; background: transparent; color: var(--danger); font-size: 12px; padding: 8px 14px; }
+  .btn.ghost-danger { border-color: transparent; background: transparent; color: var(--danger); font-size: 12px; padding: 9px 14px; }
   .btn.ghost-danger:hover { background: var(--danger-dim); }
+  .btn.stop-day { border-color: var(--danger); color: var(--danger); background: transparent; font-size: 12px; padding: 9px 14px; }
+  .btn.stop-day:hover { background: var(--danger-dim); }
+
+  .done-banner {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(212,245,66,0.25);
+    background: rgba(212,245,66,0.06); color: var(--accent); font-size: 12px; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase; margin-top: 10px;
+  }
 
   /* Time info row */
   .time-info {
@@ -163,11 +172,11 @@
   .skip-tag { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--bg3); padding: 3px 8px; border-radius: 6px; }
 
   /* Modals */
-  #modal {
+  #modal, #modal-summary {
     position: fixed; inset: 0; background: rgba(0,0,0,0.75);
     display: none; align-items: center; justify-content: center; z-index: 999;
   }
-  #modal.visible { display: flex; }
+  #modal.visible, #modal-summary.visible { display: flex; }
 
   .modal-box {
     background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--radius);
@@ -206,7 +215,9 @@
     <div class="controls">
       <button class="btn primary" id="main-btn" onclick="handleMain()">▶ Start</button>
       <button class="btn ghost-danger" id="reset-btn" onclick="handleReset()" style="display:none">↺ Reset</button>
+      <button class="btn stop-day" id="stop-day-btn" onclick="handleStopDay()" style="display:none">⏹ Stop</button>
     </div>
+    <div class="done-banner" id="done-banner" style="display:none">Done for today</div>
   </div>
 
   <!-- Start / End time -->
@@ -241,6 +252,18 @@
   <div class="section-head">Recent sessions</div>
   <div class="session-list" id="session-list">
     <div class="session-row"><span class="session-date">No sessions yet</span></div>
+  </div>
+</div>
+
+<!-- Day summary modal -->
+<div id="modal-summary">
+  <div class="modal-box">
+    <div class="modal-emoji">🎉</div>
+    <div class="modal-title">Great work!</div>
+    <div class="modal-desc" id="summary-desc">—</div>
+    <div class="modal-actions">
+      <button class="btn primary" onclick="closeSummary()">Done</button>
+    </div>
   </div>
 </div>
 
@@ -303,9 +326,9 @@
     // Status
     const badge = document.getElementById('status-badge');
     const stxt = document.getElementById('status-text');
-    const onBreak = !state.running && state.todayTotal > 0;
-    badge.className = 'status-badge ' + (state.running ? 'running' : onBreak ? 'break' : 'idle');
-    stxt.textContent = state.running ? 'Tracking' : onBreak ? 'On break' : 'Idle';
+    const onBreak = !state.running && state.todayTotal > 0 && !state.stoppedForDay;
+    badge.className = 'status-badge ' + (state.stoppedForDay ? 'idle' : state.running ? 'running' : onBreak ? 'break' : 'idle');
+    stxt.textContent = state.stoppedForDay ? 'Done' : state.running ? 'Tracking' : onBreak ? 'On break' : 'Idle';
 
     // Timer card
     document.getElementById('timer-card').className = 'timer-card' + (state.running ? ' running' : '');
@@ -314,8 +337,23 @@
     disp.className = 'timer-display ' + (state.running ? 'running' : state.todayTotal > 0 ? 'paused' : '');
 
     // Buttons
-    document.getElementById('main-btn').textContent = state.running ? '⏸ Pause' : (state.todayTotal > 0 ? '▶ Resume' : '▶ Start');
-    document.getElementById('reset-btn').style.display = (!state.running && state.todayTotal > 0) ? '' : 'none';
+    const mainBtn = document.getElementById('main-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const stopDayBtn = document.getElementById('stop-day-btn');
+    const doneBanner = document.getElementById('done-banner');
+
+    if (state.stoppedForDay) {
+      mainBtn.style.display = 'none';
+      stopDayBtn.style.display = 'none';
+      resetBtn.style.display = '';
+      doneBanner.style.display = '';
+    } else {
+      mainBtn.style.display = '';
+      mainBtn.textContent = state.running ? '⏸ Pause' : (state.todayTotal > 0 ? '▶ Resume' : '▶ Start');
+      stopDayBtn.style.display = state.todayTotal > 0 ? '' : 'none';
+      resetBtn.style.display = (!state.running && state.todayTotal > 0) ? '' : 'none';
+      doneBanner.style.display = 'none';
+    }
 
     // Start / end times
     document.getElementById('ti-start').textContent = fmtTime(state.startTime) || '—';
@@ -372,6 +410,31 @@
     if (confirm("Reset today's timer?")) window.worktimer.reset();
   }
 
+  function handleStopDay() {
+    window.worktimer.stopDay();
+  }
+
+  function showDaySummary() {
+    if (!currentState) return;
+    const total = currentState.todayTotal;
+    const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60);
+    const start = currentState.startTime ? fmtTime(currentState.startTime) : null;
+    const end = currentState.endTime ? fmtTime(currentState.endTime) : null;
+    const breaks = currentState.breakCount || 0;
+    const breakTime = currentState.totalBreakSecs ? fmtHM(currentState.totalBreakSecs) : null;
+
+    let desc = `You worked <strong>${h}h ${m}m</strong> today.`;
+    if (start && end) desc += `<br>${start} → ${end}`;
+    if (breaks > 0) desc += `<br>${breaks} break${breaks !== 1 ? 's' : ''}${breakTime ? ' · ' + breakTime : ''}`;
+
+    document.getElementById('summary-desc').innerHTML = desc;
+    document.getElementById('modal-summary').classList.add('visible');
+  }
+
+  function closeSummary() {
+    document.getElementById('modal-summary').classList.remove('visible');
+  }
+
   function acceptDay() {
     document.getElementById('modal').classList.remove('visible');
     window.worktimer.acceptDay();
@@ -384,6 +447,7 @@
 
   window.worktimer.onStateUpdate((state) => renderState(state));
   window.worktimer.onShowDayPrompt(() => document.getElementById('modal').classList.add('visible'));
+  window.worktimer.onShowDaySummary(() => showDaySummary());
 
   window.worktimer.getState().then(renderState);
 </script>
