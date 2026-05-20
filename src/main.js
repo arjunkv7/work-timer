@@ -253,6 +253,24 @@ async function setupDBus() {
     const dbus = require('dbus-next');
     const sessionBus = dbus.sessionBus();
 
+    // systemd-logind: Lock/Unlock signals fire only on actual screen lock, not idle screensaver
+    try {
+      const sessionId = process.env.XDG_SESSION_ID;
+      if (!sessionId) throw new Error('XDG_SESSION_ID not set');
+      const loginObj = await sessionBus.getProxyObject('org.freedesktop.login1', '/org/freedesktop/login1');
+      const manager = loginObj.getInterface('org.freedesktop.login1.Manager');
+      const sessionPath = await manager.GetSession(sessionId);
+      const sessionObj = await sessionBus.getProxyObject('org.freedesktop.login1', sessionPath);
+      const sessionIface = sessionObj.getInterface('org.freedesktop.login1.Session');
+      sessionIface.on('Lock', () => handleLock());
+      sessionIface.on('Unlock', () => handleUnlock());
+      console.log('✓ systemd-logind screen lock detection active');
+      return;
+    } catch (e) {
+      console.log('systemd-logind not available, trying GNOME ScreenSaver…');
+    }
+
+    // GNOME ScreenSaver: ActiveChanged fires when the GNOME lock screen appears
     try {
       const obj = await sessionBus.getProxyObject('org.gnome.ScreenSaver', '/org/gnome/ScreenSaver');
       const iface = obj.getInterface('org.gnome.ScreenSaver');
@@ -263,35 +281,13 @@ async function setupDBus() {
       console.log('✓ GNOME ScreenSaver D-Bus connected');
       return;
     } catch (e) {
-      console.log('GNOME ScreenSaver not available, trying KDE…');
+      console.log('GNOME ScreenSaver not available…');
     }
 
-    try {
-      const obj2 = await sessionBus.getProxyObject('org.freedesktop.ScreenSaver', '/org/freedesktop/ScreenSaver');
-      const iface2 = obj2.getInterface('org.freedesktop.ScreenSaver');
-      iface2.on('ActiveChanged', (active) => {
-        if (active) handleLock();
-        else handleUnlock();
-      });
-      console.log('✓ freedesktop ScreenSaver D-Bus connected');
-    } catch (e) {
-      console.warn('No D-Bus screen lock interface found. Falling back to xprintidle.');
-      setupIdleFallback();
-    }
+    console.warn('No reliable screen lock interface found. Timer will not auto-pause on lock.');
   } catch (e) {
     console.error('D-Bus setup failed:', e.message);
-    setupIdleFallback();
   }
-}
-
-function setupIdleFallback() {
-  const { execSync } = require('child_process');
-  setInterval(() => {
-    try {
-      const idleMs = parseInt(execSync('xprintidle', { timeout: 1000 }).toString().trim());
-      if (idleMs > 60000 && running) handleLock();
-    } catch (e) {}
-  }, 15000);
 }
 
 // ── Day prompt ────────────────────────────────────────────────────────────────
